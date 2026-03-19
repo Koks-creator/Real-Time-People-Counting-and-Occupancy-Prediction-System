@@ -1,0 +1,319 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<div class="main-grid">
+
+    <!-- ── LEWA KOLUMNA: kontrolki ── -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+
+        <!-- Źródło -->
+        <div class="panel">
+            <div class="panel-header"><h2>Source</h2></div>
+            <div class="panel-body">
+                <div class="source-tabs">
+                    <label class="source-tab">
+                        <input type="radio" name="source" value="video" checked onchange="toggleSource()">
+                        📹 Video
+                    </label>
+                    <label class="source-tab">
+                        <input type="radio" name="source" value="camera" onchange="toggleSource()">
+                        📷 Webcam
+                    </label>
+                </div>
+
+                <div id="video-source">
+                    <select id="video-select">
+                        <option value="">-- Select video --</option>
+                        {% for video in videos %}
+                        <option value="{{ video }}">{{ video }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div id="camera-source" style="display:none;">
+                    <select id="camera-select">
+                        <option value="">-- wybierz kamerę --</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Parametry -->
+        <div class="panel">
+            <div class="panel-header"><h2>Parameters</h2></div>
+            <div class="panel-body">
+                <div class="param-grid">
+                    <div class="param-item">
+                        <label>Conf</label>
+                        <input type="number" id="conf" value="0.2" step="0.05" min="0" max="1">
+                    </div>
+                    <div class="param-item">
+                        <label>IoU</label>
+                        <input type="number" id="iou" value="0.35" step="0.05" min="0" max="1">
+                    </div>
+                    <div class="param-item">
+                        <label>Alpha</label>
+                        <input type="number" id="alpha" value="0.6" step="0.05" min="0" max="1">
+                    </div>
+                </div>
+
+                <div class="check-row">
+                    <label class="check-item">
+                        <input type="checkbox" id="augment" checked>
+                        <span class="check-box"></span>
+                        Augment
+                    </label>
+                    <label class="check-item">
+                        <input type="checkbox" id="agnostic_nms" checked>
+                        <span class="check-box"></span>
+                        Agnostic NMS
+                    </label>
+                    <label class="check-item">
+                        <input type="checkbox" id="use_sahi">
+                        <span class="check-box"></span>
+                        Use SAHI
+                    </label>
+                </div>
+
+                <div id="sahi-params">
+                    <div class="param-grid">
+                        <div class="param-item">
+                            <label>SAHI Conf</label>
+                            <input type="number" id="sahi_conf" value="0.2" step="0.05" min="0" max="1">
+                        </div>
+                        <div class="param-item">
+                            <label>Slice H</label>
+                            <input type="number" id="sahi_slice_height" value="480" step="32" min="64">
+                        </div>
+                        <div class="param-item">
+                            <label>Slice W</label>
+                            <input type="number" id="sahi_slice_width" value="480" step="32" min="64">
+                        </div>
+                        <div class="param-item">
+                            <label>Overlap H</label>
+                            <input type="number" id="sahi_overlap_height_ratio" value="0.2" step="0.05" min="0" max="1">
+                        </div>
+                        <div class="param-item">
+                            <label>Overlap W</label>
+                            <input type="number" id="sahi_overlap_width_ratio" value="0.2" step="0.05" min="0" max="1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="btn-row">
+                    <button id="btn-start" class="btn btn-start" onclick="startStream()">▶ Start</button>
+                    <button class="btn btn-stop" onclick="stopStream()">■ Stop</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strefy -->
+        <div class="panel areas-panel">
+            <div class="panel-header"><h2>Areas</h2></div>
+            <div class="panel-body" id="areas">
+                <div class="stream-placeholder" style="padding:20px 0;">
+                    <span style="font-family:var(--mono);font-size:.7rem;color:var(--text-dim);">NO DATA</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── PRAWA KOLUMNA: stream ── -->
+    <div class="panel stream-panel">
+        <div class="panel-header"><h2>Preview</h2></div>
+        <div class="stream-body">
+            <div class="stream-placeholder" id="stream-placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <rect x="2" y="2" width="20" height="20" rx="2"/>
+                    <circle cx="12" cy="12" r="4"/>
+                    <line x1="12" y1="2" x2="12" y2="6"/>
+                    <line x1="12" y1="18" x2="12" y2="22"/>
+                    <line x1="2" y1="12" x2="6" y2="12"/>
+                    <line x1="18" y1="12" x2="22" y2="12"/>
+                </svg>
+                <span>Select source and press Start</span>
+            </div>
+            <img id="stream">
+        </div>
+    </div>
+    <div class="panel history-panel">
+        <div class="panel-header"><h2>History</h2></div>
+        <div class="panel-body">
+            <canvas id="history-chart" height="150"></canvas>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    let pollInterval = null;
+
+    fetch("/cameras").then(r => r.json()).then(cams => {
+        const sel = document.getElementById("camera-select");
+        cams.forEach(id => {
+            const opt = document.createElement("option");
+            opt.value = id;
+            opt.text = `Kamera ${id}`;
+            sel.appendChild(opt);
+        });
+    });
+
+    function toggleSource() {
+        const isVideo = document.querySelector('input[name="source"]:checked').value === "video";
+        document.getElementById("video-source").style.display = isVideo ? "block" : "none";
+        document.getElementById("camera-source").style.display = isVideo ? "none" : "block";
+        // sync tab active style
+        document.querySelectorAll('.source-tab').forEach(t => t.classList.remove('active'));
+    }
+
+    document.getElementById("use_sahi").addEventListener("change", function () {
+        document.getElementById("sahi-params").style.display = this.checked ? "block" : "none";
+    });
+
+    function buildStreamUrl() {
+        const source = document.querySelector('input[name="source"]:checked').value;
+        const params = new URLSearchParams({
+            conf:                      document.getElementById("conf").value,
+            iou:                       document.getElementById("iou").value,
+            alpha:                     document.getElementById("alpha").value,
+            augment:                   document.getElementById("augment").checked,
+            agnostic_nms:              document.getElementById("agnostic_nms").checked,
+            use_sahi:                  document.getElementById("use_sahi").checked,
+            sahi_conf:                 document.getElementById("sahi_conf").value,
+            sahi_slice_height:         document.getElementById("sahi_slice_height").value,
+            sahi_slice_width:          document.getElementById("sahi_slice_width").value,
+            sahi_overlap_height_ratio: document.getElementById("sahi_overlap_height_ratio").value,
+            sahi_overlap_width_ratio:  document.getElementById("sahi_overlap_width_ratio").value,
+        });
+
+        if (source === "video") {
+            const video = document.getElementById("video-select").value;
+            if (!video) { alert("Select video"); return null; }
+            params.set("video", video);
+            return `/stream?${params.toString()}`;
+        } else {
+            const cam = document.getElementById("camera-select").value;
+            if (!cam) { alert("Select webcam"); return null; }
+            params.set("cam_id", cam);
+            return `/stream/camera?${params.toString()}`;
+        }
+    }
+
+    let historyChart = null;
+
+    function initChart() {
+        const ctx = document.getElementById("history-chart").getContext("2d");
+        historyChart = new Chart(ctx, {
+            type: "line",
+            data: { datasets: [] },
+            options: {
+                animation: false,
+                responsive: true,
+                scales: {
+                    x: {
+                        type: "linear",
+                        title: { display: true, text: "time [s]", color: "#4a5060" },
+                        ticks: { color: "#4a5060" },
+                        grid: { color: "#1f2530" }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: "persons", color: "#4a5060" },
+                        ticks: { color: "#4a5060" },
+                        grid: { color: "#1f2530" }
+                    }
+                },
+                plugins: { legend: { labels: { color: "#c8cdd6", font: { family: "Share Tech Mono" } } } },
+                backgroundColor: "transparent"
+            }
+        });
+    }
+
+    const COLORS = ["#f0a500", "#00e676", "#ff3d3d", "#40c4ff"];
+
+    function fetchHistory() {
+        fetch("/history").then(r => r.json()).then(data => {
+            if (!historyChart) return;
+            const areas = Object.keys(data);
+            historyChart.data.datasets = areas.map((name, i) => ({
+                label: name,
+                data: data[name].map(p => ({ x: p.t, y: p.count })),
+                borderColor: COLORS[i % COLORS.length],
+                backgroundColor: "transparent",
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.3
+            }));
+            historyChart.update();
+        });
+    }
+
+    function startStream() {
+        document.querySelector('.stream-body').classList.add('active');
+        const img = document.getElementById("stream");
+        if (img.src && img.style.display !== "none") return;
+
+        const url = buildStreamUrl();
+        if (!url) return;
+
+        document.getElementById("stream-placeholder").style.display = "none";
+        img.style.display = "block";
+        img.src = url;
+        document.getElementById("btn-start").disabled = true;
+
+        pollInterval = setInterval(fetchAreas, 1000);
+
+        initChart();
+        pollInterval = setInterval(() => { fetchAreas(); fetchHistory(); }, 1000);
+    }
+
+    function stopStream() {
+        document.querySelector('.stream-body').classList.remove('active');
+        const img = document.getElementById("stream");
+        img.src = "";
+        img.style.display = "none";
+        document.getElementById("stream-placeholder").style.display = "flex";
+        clearInterval(pollInterval);
+        document.getElementById("areas").innerHTML = `
+            <div class="stream-placeholder" style="padding:20px 0;">
+                <span style="font-family:var(--mono);font-size:.7rem;color:var(--text-dim);">BRAK DANYCH</span>
+            </div>`;
+        document.getElementById("btn-start").disabled = false;
+        if (historyChart) { historyChart.destroy(); historyChart = null; }
+    }
+
+    function fetchAreas() {
+        fetch("/areas")
+            .then(r => r.json())
+            .then(data => {
+                let html = "";
+                for (const [name, info] of Object.entries(data)) {
+                    const occ = Math.min(info.occupancy_pct, 100);
+                    html += `
+                    <div class="area-card">
+                        <div class="area-name">${name}</div>
+                        <div class="area-count">${info.count}</div>
+                        <div class="area-occ">${info.occupancy_pct}% capacity</div>
+                        <div class="occ-bar">
+                            <div class="occ-bar-fill" style="width:${occ}%"></div>
+                        </div>`;
+
+                    if (Object.keys(info.pred).length) {
+                        html += `<div class="pred-list">`;
+                        for (const [horizon, pred] of Object.entries(info.pred)) {
+                            html += `
+                            <div class="pred-item">
+                                <span>in ${horizon}s</span>
+                                <span class="pred-val">${pred.val} pers. (${pred.occupancy_pct}%)</span>
+                            </div>`;
+                        }
+                        html += `</div>`;
+                    }
+                    html += `</div>`;
+                }
+                document.getElementById("areas").innerHTML = html;
+            });
+    }
+</script>
+
+{% endblock content %}

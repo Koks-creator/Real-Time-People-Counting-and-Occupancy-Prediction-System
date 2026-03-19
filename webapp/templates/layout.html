@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zone Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="page">
+    <header>
+        <div class="logo-dot"></div>
+        <h1>Zone Monitor</h1>
+        <span class="header-tag">SURVEILLANCE SYSTEM v1.0</span>
+    </header>
+
+    {% block content %}
+    {% endblock content %}
+</div>
+</body>
+</html>
