@@ -24,7 +24,7 @@ class ZonePredictor:
         logger.info("Initializing ZonePredictor: \n" \
         f"- {self.model_path=}\n"
         )
-        self.model = keras.models.load_model('zone_model.h5', compile=False)
+        self.model = keras.models.load_model(self.model_path, compile=False)
         self.model.compile(optimizer='adam', loss='mse', metrics=['mae'])
         
         logger.info("Model loaded")
